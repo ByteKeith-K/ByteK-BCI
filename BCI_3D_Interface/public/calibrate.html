@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ByteK BCI | Patient Calibration</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+        body { background-color: #0b1120; color: white; font-family: 'Inter', sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; background-image: radial-gradient(circle at center, #1e293b 0%, #0b1120 100%); }
+        h1 { color: #38bdf8; margin-bottom: 5px; font-weight: 800; font-size: 32px; text-shadow: 0 0 20px rgba(56,189,248,0.3); }
+        .patient-name { font-size: 16px; color: #94a3b8; margin-bottom: 40px; letter-spacing: 1px; text-transform: uppercase; }
+        .instruction { font-size: 42px; font-weight: 800; margin: 40px 0; text-align: center; height: 60px; transition: 0.3s; }
+        .progress-container { width: 70%; background: rgba(30, 41, 59, 0.5); border-radius: 20px; height: 24px; overflow: hidden; margin-bottom: 40px; border: 1px solid rgba(255,255,255,0.1); box-shadow: inset 0 2px 10px rgba(0,0,0,0.5); }
+        .progress-bar { height: 100%; background: linear-gradient(90deg, #10b981, #38bdf8); width: 0%; transition: width 0.1s linear; box-shadow: 0 0 15px #10b981; }
+        .status-box { background: rgba(30, 41, 59, 0.6); backdrop-filter: blur(15px); padding: 50px; border-radius: 20px; text-align: center; width: 60%; border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        button { padding: 16px 40px; font-size: 18px; font-weight: 800; background: #38bdf8; color: #0b1120; border: none; border-radius: 12px; cursor: pointer; transition: 0.3s; box-shadow: 0 4px 20px rgba(56,189,248,0.4); }
+        button:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(56,189,248,0.6); }
+        button:disabled { background: #1e293b; color: #64748b; box-shadow: none; cursor: not-allowed; }
+        .error-text { color: #ef4444 !important; text-shadow: 0 0 15px rgba(239, 68, 68, 0.5); }
+    </style>
+</head>
+<body>
+<div class="status-box">
+    <h1>BCI Calibration Protocol</h1>
+    <div class="patient-name" id="patient-header">Loading patient data...</div>
+    <div class="instruction" id="instruction">Ready to begin.</div>
+    <div class="progress-container"><div class="progress-bar" id="progress-bar"></div></div>
+    <button id="start-btn" onclick="startCalibration()">Start Calibration</button>
+    <p id="status-text" style="color: #10b981; margin-top: 20px; font-weight: 600;"></p>
+</div>
+
+<script>
+    function playSound(type) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator(); const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+
+        if(type === 'rest') { osc.type = 'sine'; osc.frequency.setValueAtTime(400, ctx.currentTime); }
+        else if(type === 'left') { osc.type = 'sine'; osc.frequency.setValueAtTime(800, ctx.currentTime); }
+        else if(type === 'right') { osc.type = 'sine'; osc.frequency.setValueAtTime(1000, ctx.currentTime); }
+        else { osc.type = 'sine'; osc.frequency.setValueAtTime(1200, ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(1600, ctx.currentTime + 0.2); }
+
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        osc.start(); osc.stop(ctx.currentTime + 0.2);
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const patientId = urlParams.get('id');
+    const mode = urlParams.get('mode') || 'simulation';
+
+    async function loadPatient() {
+        const res = await fetch('/api/get-patients');
+        const patients = await res.json();
+        const patient = patients.find(p => p.id == patientId);
+        if (patient) {
+            document.getElementById('patient-header').innerText = `${patient.name} (PAT-00${patient.id}) | Mode: ${mode.toUpperCase()}`;
+        }
+    }
+    loadPatient();
+
+    async function startCalibration() {
+        const btn = document.getElementById('start-btn');
+        const inst = document.getElementById('instruction');
+        const bar = document.getElementById('progress-bar');
+        const statusTxt = document.getElementById('status-text');
+
+        btn.disabled = true;
+
+        if (mode === 'hardware') {
+            statusTxt.innerText = "Connecting to EEG Device via LSL...";
+            statusTxt.style.color = "#38bdf8";
+            setTimeout(() => {
+                statusTxt.innerText = "❌ ERROR: No LSL device found.";
+                statusTxt.classList.add('error-text');
+                inst.innerText = "Device Not Found";
+                inst.classList.add('error-text');
+                setTimeout(() => { window.location.href = '/dashboard.html'; }, 3500);
+            }, 3000);
+            return;
+        }
+
+        statusTxt.innerText = "Simulation Mode: Initializing AI...";
+        await fetch(`/api/calibrate/${patientId}`, { method: 'POST' });
+
+        const sequence = [
+            { text: "REST", time: 4000, color: "#38bdf8", sound: 'rest' },
+            { text: "IMAGINE LEFT HAND", time: 5000, color: "#10b981", sound: 'left' },
+            { text: "REST", time: 4000, color: "#38bdf8", sound: 'rest' },
+            { text: "IMAGINE RIGHT HAND", time: 5000, color: "#ef4444", sound: 'right' },
+            { text: "REST", time: 4000, color: "#38bdf8", sound: 'rest' }
+        ];
+
+        let totalTime = sequence.reduce((acc, curr) => acc + curr.time, 0);
+        let elapsed = 0;
+
+        for (let step of sequence) {
+            inst.innerText = step.text;
+            inst.style.color = step.color;
+            inst.style.textShadow = `0 0 20px ${step.color}80`;
+            playSound(step.sound);
+
+            let stepTime = 0;
+            let interval = setInterval(() => {
+                stepTime += 100;
+                elapsed += 100;
+                bar.style.width = `${(elapsed / totalTime) * 100}%`;
+                if (stepTime >= step.time) clearInterval(interval);
+            }, 100);
+
+            await new Promise(resolve => setTimeout(resolve, step.time));
+        }
+
+        playSound('success');
+        inst.innerText = "Calibration Sequence Complete!";
+        inst.style.color = "#10b981";
+        inst.style.textShadow = "0 0 20px rgba(16,185,129,0.5)";
+        statusTxt.innerText = "AI Model personalized. Returning to Dashboard...";
+
+        // Auto-redirect after 3 seconds (No Post-Vitals!)
+        setTimeout(() => { window.location.href = '/dashboard.html'; }, 3000);
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Datasets & Models
+data/
+models/
+*.gdf
+*.mat
+*.pth
+*.joblib
+
+# Node.js
+node_modules/
+npm-debug.log
+
+# IDEs
+.idea/
+.vscode/
+
+# Passwords
+.env
+*.env
+
+# OS Files
+.DS_Store
+Thumbs.db

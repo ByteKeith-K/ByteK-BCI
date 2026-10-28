@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ByteK BCI - Clinician Portal</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0b1120; color: white; margin: 0; padding: 30px; background-image: radial-gradient(circle at 50% -20%, #1e293b, #0b1120); background-attachment: fixed; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(56, 189, 248, 0.1); padding-bottom: 20px; margin-bottom: 30px; }
+        h1 { color: #38bdf8; margin: 0; font-size: 28px; letter-spacing: -0.5px; text-shadow: 0 0 15px rgba(56, 189, 248, 0.3); }
+        .mode-toggle { display: flex; align-items: center; gap: 15px; background: rgba(30, 41, 59, 0.5); padding: 10px 20px; border-radius: 30px; border: 1px solid rgba(255,255,255,0.05); }
+        .mode-toggle span { font-weight: 600; font-size: 14px; color: #64748b; }
+        .mode-toggle span.active { color: #10b981; text-shadow: 0 0 10px rgba(16, 185, 129, 0.4); }
+        .switch { position: relative; display: inline-block; width: 50px; height: 28px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #1e293b; transition: .4s; border-radius: 34px; border: 1px solid #38bdf8; }
+        .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: #38bdf8; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #10b981; border-color: #10b981; }
+        input:checked + .slider:before { transform: translateX(22px); background-color: white; }
+        .dashboard-grid { display: grid; grid-template-columns: 350px 1fr; gap: 30px; }
+        .card { background: rgba(30, 41, 59, 0.4); padding: 25px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); }
+        h2 { font-size: 18px; color: #e2e8f0; margin-top: 0; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px; font-weight: 600; }
+        input, select, textarea { width: 100%; padding: 14px; margin-bottom: 15px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 10px; box-sizing: border-box; font-family: 'Inter'; outline: none; }
+        textarea { resize: vertical; height: 80px; }
+        input:focus, select:focus, textarea:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2); }
+        button { width: 100%; padding: 16px; background: linear-gradient(135deg, #38bdf8, #2563eb); color: white; border: none; border-radius: 10px; font-weight: 600; font-size: 15px; cursor: pointer; transition: 0.3s; }
+        button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(56, 189, 248, 0.4); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 16px 15px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        th { color: #64748b; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+        .badge { padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
+        .badge-warning { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); }
+        .badge-success { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); }
+        .action-btn { padding: 8px 12px; font-size: 12px; width: auto; margin-right: 5px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+        .btn-calibrate { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .btn-therapy { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
+        .btn-edit { background: transparent; color: #94a3b8; border: 1px solid rgba(255,255,255,0.2); }
+        .btn-delete { background: transparent; color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11, 17, 32, 0.8); backdrop-filter: blur(5px); display: none; justify-content: center; align-items: center; z-index: 100; }
+        .modal-box { background: #1e293b; padding: 40px; border-radius: 16px; border: 1px solid rgba(56, 189, 248, 0.3); width: 450px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        .modal-box h2 { color: #38bdf8; margin-top: 0; }
+        .vital-row { display: flex; gap: 10px; }
+        .vital-row input { width: 50%; }
+        .checkbox-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; color: #cbd5e1; font-size: 14px; }
+        .checkbox-row input { width: auto; margin: 0; }
+        .error-alert { background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #ef4444; padding: 10px; border-radius: 8px; margin-bottom: 15px; display: none; font-size: 14px; }
+
+        #toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        .toast { background: #1e293b; color: white; padding: 15px 30px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 10px; animation: slideDown 0.3s ease-out forwards; border-left: 4px solid #ef4444; }
+        .toast.success { border-left-color: #10b981; }
+        .toast.error { border-left-color: #ef4444; }
+        .toast.warning { border-left-color: #f59e0b; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+    </style>
+</head>
+<body>
+<script>
+    if (localStorage.getItem('bci_role') !== 'clinician') window.location.href = '/login.html';
+</script>
+
+<div id="toast-container"></div>
+
+<div class="header">
+    <h1>🧠 ByteK BCI - Clinician Portal</h1>
+    <div style="display: flex; gap: 20px; align-items: center;">
+        <div class="mode-toggle">
+            <span id="label-sim" class="active">Simulation</span>
+            <label class="switch"><input type="checkbox" id="mode-switch" onchange="toggleMode()"><span class="slider"></span></label>
+            <span id="label-hw">Hardware (LSL)</span>
+        </div>
+        <span style="color:#94a3b8; font-size: 14px;">User: <strong id="ui-username" style="color:#38bdf8;">Clinician</strong></span>
+        <button onclick="logout()" style="width: auto; padding: 8px 16px; font-size: 13px; background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid #ef4444;">Logout</button>
+    </div>
+</div>
+
+<div class="dashboard-grid">
+    <div class="card">
+        <h2>Register New Patient</h2>
+        <input type="text" id="p-name" placeholder="Patient Full Name">
+        <input type="number" id="p-age" placeholder="Age">
+        <select id="p-gender">
+            <option value="" disabled selected>Select Gender</option>
+            <option value="male">Male (Avatar)</option>
+            <option value="female">Female (Avatar)</option>
+        </select>
+        <select id="p-side">
+            <option value="" disabled selected>Select Affected Side</option>
+            <option value="Left">Affected Side: Left</option>
+            <option value="Right">Affected Side: Right</option>
+        </select>
+        <select id="p-dataset">
+            <option value="" disabled selected>Select Simulation Profile</option>
+            <option value="healthy">Simulation: Healthy Brain</option>
+            <option value="stroke">Simulation: Stroke Brain</option>
+        </select>
+        <button onclick="addPatient()">Create Patient File</button>
+    </div>
+
+    <div class="card">
+        <h2>Patient Records</h2>
+        <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="patient-list"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- EDIT PATIENT MODAL -->
+<div class="modal-overlay" id="edit-modal">
+    <div class="modal-box">
+        <h2>Edit Patient File</h2>
+        <input type="text" id="e-name" placeholder="Full Name">
+        <input type="number" id="e-age" placeholder="Age">
+        <select id="e-side"><option value="Left">Affected Side: Left</option><option value="Right">Affected Side: Right</option></select>
+        <textarea id="e-notes" placeholder="Clinical notes for the Doctor..."></textarea>
+        <button onclick="savePatientEdit()">Save Changes</button>
+        <button onclick="closeEditModal()" style="background: transparent; color: #94a3b8; border: none; margin-top: 10px; font-size: 14px;">Cancel</button>
+    </div>
+</div>
+
+<!-- VITALS MODAL -->
+<div class="modal-overlay" id="vitals-modal">
+    <div class="modal-box">
+        <h2 id="modal-title">Pre-Session Safety Check</h2>
+        <p style="color: #94a3b8; font-size: 14px; margin-bottom: 20px;">Enter physical vitals to clear patient for procedure.</p>
+
+        <div class="error-alert" id="vitals-error">⚠️ Patient vitals out of safe range. Procedure aborted.</div>
+
+        <div class="vital-row">
+            <input type="number" id="v-sys" placeholder="Systolic (mmHg)">
+            <input type="number" id="v-dia" placeholder="Diastolic (mmHg)">
+        </div>
+        <div class="vital-row">
+            <input type="number" id="v-hr" placeholder="Heart Rate (bpm)">
+            <input type="number" id="v-spo2" placeholder="SpO2 (%)">
+        </div>
+
+        <label style="color:#94a3b8; font-size:13px; display:block; margin-bottom:5px;">Cognitive Fatigue (1 = Fresh, 10 = Exhausted)</label>
+        <input type="number" id="v-fatigue" min="1" max="10" placeholder="Fatigue Scale (1-10)">
+
+        <div class="checkbox-row">
+            <input type="checkbox" id="v-symptoms">
+            <label for="v-symptoms">Patient reports NO dizziness, nausea, or chest pain.</label>
+        </div>
+
+        <button onclick="submitVitals()" id="btn-submit-vitals">Confirm</button>
+        <button onclick="closeVitalsModal()" style="background: transparent; color: #94a3b8; border: none; margin-top: 10px; font-size: 14px;">Cancel</button>
+    </div>
+</div>
+
+<script>
+    document.getElementById('ui-username').innerText = localStorage.getItem('bci_user') || 'Clinician';
+    function logout() { localStorage.clear(); window.location.href = '/login.html'; }
+
+    function showToast(message, type = 'error') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.innerHTML = `<span>${message}</span>`;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.style.animation = 'fadeOut 0.3s ease-out forwards';
+            setTimeout(() => { toast.remove(); }, 300);
+        }, 2000);
+    }
+
+    let currentPatientId = null;
+    let currentGender = null;
+    let currentAction = null;
+    let editingPatientId = null;
+    let safetyLimits = {};
+
+    async function loadSettings() {
+        const res = await fetch('/api/get-settings');
+        safetyLimits = await res.json();
+    }
+
+    async function loadPatients() {
+        const res = await fetch('/api/get-patients');
+        const patients = await res.json();
+        const tbody = document.getElementById('patient-list');
+        tbody.innerHTML = '';
+
+        patients.forEach(p => {
+            let statusBadge = p.has_model ? `<span class="badge badge-success">Ready</span>` : `<span class="badge badge-warning">Needs Calibration</span>`;
+
+            let actionButtons = '';
+            if (!p.has_model) {
+                actionButtons = `
+                        <button class="action-btn btn-calibrate" onclick="openVitalsModal(${p.id}, '${p.gender}', 'calibration')">Calibrate</button>
+                        <button class="action-btn btn-edit" onclick="openEditModal(${p.id}, '${p.name}', ${p.age}, '${p.affected_side}', '${p.notes || ''}')">Edit</button>
+                        <button class="action-btn btn-delete" onclick="deletePatient(${p.id})">Delete</button>
+                    `;
+            } else {
+                actionButtons = `
+                        <button class="action-btn btn-therapy" onclick="openVitalsModal(${p.id}, '${p.gender}', 'therapy')">Therapy</button>
+                        <button class="action-btn btn-calibrate" onclick="openVitalsModal(${p.id}, '${p.gender}', 'calibration')">Recalibrate</button>
+                        <button class="action-btn btn-edit" onclick="openEditModal(${p.id}, '${p.name}', ${p.age}, '${p.affected_side}', '${p.notes || ''}')">Edit</button>
+                    `;
+            }
+
+            tbody.innerHTML += `<tr><td><strong>PAT-00${p.id}</strong></td><td>${p.name} (${p.age}y)</td><td>${statusBadge}</td><td>${actionButtons}</td></tr>`;
+        });
+    }
+
+    async function addPatient() {
+        const name = document.getElementById('p-name').value;
+        const age = document.getElementById('p-age').value;
+        const gender = document.getElementById('p-gender').value;
+        const side = document.getElementById('p-side').value;
+        const dataset = document.getElementById('p-dataset').value;
+
+        if(!name || !age || !gender || !side || !dataset) return showToast("Please fill all fields.", "error");
+
+        await fetch('/api/add-patient', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, age, gender, affected_side: side, dataset_type: dataset }) });
+        document.getElementById('p-name').value = ''; document.getElementById('p-age').value = '';
+        loadPatients();
+    }
+
+    // --- EDIT LOGIC ---
+    function openEditModal(id, name, age, side, notes) {
+        editingPatientId = id;
+        document.getElementById('e-name').value = name;
+        document.getElementById('e-age').value = age;
+        document.getElementById('e-side').value = side;
+        document.getElementById('e-notes').value = notes;
+        document.getElementById('edit-modal').style.display = 'flex';
+    }
+
+    function closeEditModal() { document.getElementById('edit-modal').style.display = 'none'; }
+
+    async function savePatientEdit() {
+        const name = document.getElementById('e-name').value;
+        const age = document.getElementById('e-age').value;
+        const side = document.getElementById('e-side').value;
+        const notes = document.getElementById('e-notes').value;
+        if(!name || !age) return showToast("Name and Age are required.", "error");
+
+        await fetch(`/api/edit-patient/${editingPatientId}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, age, affected_side: side, notes })
+        });
+        closeEditModal(); loadPatients();
+    }
+
+    // --- DELETE LOGIC ---
+    async function deletePatient(id) {
+        // Keep native confirm for safety-critical deletions
+        if (!confirm("Are you sure you want to delete this patient? This cannot be undone.")) return;
+        const res = await fetch(`/api/delete-patient/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) loadPatients();
+        else showToast(data.message, "error");
+    }
+
+    // --- VITALS & ACTION LOGIC ---
+    function openVitalsModal(id, gender, action) {
+        currentPatientId = id; currentGender = gender; currentAction = action;
+        document.getElementById('modal-title').innerText = action === 'calibration' ? "Pre-Calibration Safety Check" : "Pre-Session Safety Check";
+        document.getElementById('vitals-modal').style.display = 'flex';
+        document.getElementById('vitals-error').style.display = 'none';
+        document.getElementById('btn-submit-vitals').innerText = action === 'calibration' ? "Confirm & Start Calibration" : "Confirm & Start Therapy";
+    }
+
+    function closeVitalsModal() { document.getElementById('vitals-modal').style.display = 'none'; }
+
+    async function submitVitals() {
+        const sys = parseInt(document.getElementById('v-sys').value);
+        const dia = parseInt(document.getElementById('v-dia').value);
+        const hr = parseInt(document.getElementById('v-hr').value);
+        const spo2 = parseInt(document.getElementById('v-spo2').value);
+        const fatigue = parseInt(document.getElementById('v-fatigue').value);
+        const noSymptoms = document.getElementById('v-symptoms').checked;
+
+        if (!sys || !dia || !hr || !spo2 || !fatigue || !noSymptoms) {
+            return showToast("Please fill all vitals, fatigue scale, and confirm no symptoms.", "error");
+        }
+
+        // USE DOCTOR'S LIMITS
+        const errorBox = document.getElementById('vitals-error');
+        if (sys > safetyLimits.max_systolic || dia > safetyLimits.max_diastolic) {
+            errorBox.innerText = `⚠️ ABORT: Blood pressure too high (Limit: ${safetyLimits.max_systolic}/${safetyLimits.max_diastolic}).`;
+            errorBox.style.display = 'block'; return;
+        }
+        if (hr > safetyLimits.max_hr) {
+            errorBox.innerText = `⚠️ ABORT: Heart rate too high (Limit: ${safetyLimits.max_hr} bpm).`;
+            errorBox.style.display = 'block'; return;
+        }
+        if (spo2 < safetyLimits.min_spo2) {
+            errorBox.innerText = `⚠️ ABORT: Blood oxygen too low (Limit: ${safetyLimits.min_spo2}%).`;
+            errorBox.style.display = 'block'; return;
+        }
+        if (fatigue > safetyLimits.max_fatigue) {
+            errorBox.innerText = `⚠️ ABORT: Fatigue too high (Limit: ${safetyLimits.max_fatigue}/10).`;
+            errorBox.style.display = 'block'; return;
+        }
+
+        // Determine phase naming
+        const phaseName = currentAction === 'calibration' ? 'Pre-Calibration' : 'Pre-Therapy';
+
+        await fetch('/api/save-vitals', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                patient_id: currentPatientId,
+                session_id: null,
+                phase: phaseName,
+                bp_systolic: sys, bp_diastolic: dia, heart_rate: hr, spo2: spo2, fatigue_scale: fatigue, symptoms_reported: false
+            })
+        });
+
+        closeVitalsModal();
+        if (currentAction === 'calibration') {
+            window.location.href = `/calibrate.html?id=${currentPatientId}&mode=${document.getElementById('mode-switch').checked ? 'hardware' : 'simulation'}`;
+        } else {
+            window.location.href = `/therapy.html?id=${currentPatientId}&avatar=${currentGender}`;
+        }
+    }
+
+    function toggleMode() {
+        document.getElementById('label-sim').classList.toggle('active', !document.getElementById('mode-switch').checked);
+        document.getElementById('label-hw').classList.toggle('active', document.getElementById('mode-switch').checked);
+    }
+
+    loadSettings().then(() => loadPatients());
+</script>
+</body>
+</html>

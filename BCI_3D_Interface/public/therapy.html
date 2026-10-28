@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ByteK BCI | Neuro-Rehabilitation</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800;900&display=swap');
+        body { margin: 0; overflow: hidden; background-color: #0b1120; color: white; font-family: 'Inter', sans-serif; }
+        #header-bar { position: absolute; top: 0; left: 0; width: 100%; height: 60px; background: rgba(11, 17, 32, 0.85); backdrop-filter: blur(15px); border-bottom: 1px solid rgba(56, 189, 248, 0.15); display: flex; justify-content: space-between; align-items: center; padding: 0 30px; box-sizing: border-box; z-index: 10; }
+        .logo { font-weight: 800; font-size: 20px; color: #38bdf8; letter-spacing: 1px; text-shadow: 0 0 15px rgba(56,189,248,0.3); }
+        #exercise-panel { position: absolute; top: 100px; left: 30px; background: rgba(30, 41, 59, 0.6); backdrop-filter: blur(15px); padding: 20px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); width: 240px; z-index: 10; }
+        #exercise-panel h3 { margin: 0 0 15px 0; font-size: 13px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.5px; }
+        .ex-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 14px; margin-bottom: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); color: #cbd5e1; border-radius: 10px; cursor: pointer; font-weight: 600; transition: all 0.2s; }
+        .ex-btn.active { background: #38bdf8; color: #0b1120; border-color: #38bdf8; box-shadow: 0 0 20px rgba(56,189,248,0.3); }
+        .ex-btn:disabled { opacity: 0.3; cursor: not-allowed; filter: grayscale(100%); }
+        #status-container { position: absolute; top: 100px; right: 30px; background: rgba(30, 41, 59, 0.6); backdrop-filter: blur(15px); padding: 20px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); width: 240px; z-index: 10; }
+        #status-label { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #64748b; margin-bottom: 10px; font-weight: 700; }
+        #status { font-size: 20px; font-weight: 800; color: #38bdf8; text-shadow: 0 0 15px rgba(56, 189, 248, 0.4); margin-bottom: 20px; min-height: 48px; }
+        .data-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.05); }
+        .data-label { font-size: 13px; color: #94a3b8; }
+        .data-value { font-size: 16px; font-weight: 700; color: #38bdf8; font-family: monospace; }
+        #cue-banner { position: absolute; top: 80px; left: 50%; transform: translateX(-50%); background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(56, 189, 248, 0.3); padding: 15px 50px; border-radius: 50px; z-index: 15; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 20px rgba(56,189,248,0.2); transition: 0.3s; }
+        #cue-text { font-size: 24px; font-weight: 900; color: #fff; letter-spacing: 1px; margin: 0; text-transform: uppercase; }
+        #toast { position: absolute; top: 180px; left: 50%; transform: translateX(-50%); padding: 15px 40px; border-radius: 12px; font-size: 20px; font-weight: 800; z-index: 20; opacity: 0; transition: opacity 0.3s, transform 0.3s; pointer-events: none; text-transform: uppercase; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .toast-success { background: rgba(16, 185, 129, 0.9); color: white; border: 1px solid #34d399; }
+        .toast-error { background: rgba(239, 68, 68, 0.9); color: white; border: 1px solid #f87171; }
+        .toast-warning { background: rgba(245, 158, 11, 0.9); color: white; border: 1px solid #fbbf24; }
+        .toast-show { opacity: 1; transform: translateX(-50%) translateY(10px); }
+        #eeg-container { position: absolute; bottom: 0; left: 0; width: 100%; height: 120px; background: linear-gradient(to top, rgba(11, 17, 32, 1), rgba(11, 17, 32, 0.8)); border-top: 1px solid rgba(56, 189, 248, 0.1); z-index: 10; }
+        #eeg-canvas { width: 100%; height: 100%; }
+        .eeg-label { position: absolute; top: 15px; left: 30px; font-size: 11px; color: #64748b; letter-spacing: 1.5px; font-weight: 700; text-transform: uppercase; }
+        #end-modal { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; justify-content: center; align-items: center; z-index: 50; background: rgba(11, 17, 32, 0.85); backdrop-filter: blur(8px); }
+        .modal-content { background: rgba(30, 41, 59, 0.95); border: 1px solid rgba(56, 189, 248, 0.3); padding: 40px; border-radius: 24px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.5); max-width: 450px; display: flex; flex-direction: column; gap: 15px; }
+        .modal-content h2 { font-size: 28px; font-weight: 900; color: #10b981; margin: 0; text-shadow: 0 0 20px rgba(16,185,129,0.4); }
+        .modal-content input { width: 100%; padding: 14px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 10px; box-sizing: border-box; font-family: 'Inter'; outline: none; text-align: center; font-size: 16px; }
+        .modal-content input:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,0.2); }
+        .btn-restart { background: #38bdf8; color: #0b1120; padding: 16px; border:none; border-radius: 10px; font-size: 16px; font-weight: 800; cursor: pointer; transition: 0.2s; }
+        .btn-restart:hover { background: #0ea5e9; transform: translateY(-2px); }
+        .btn-restart:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; transform: none; }
+        #loader { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 30; text-align: center; }
+        .spinner { width: 50px; height: 50px; border: 5px solid rgba(255,255,255,0.1); border-top: 5px solid #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        #toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        .toast { background: #1e293b; color: white; padding: 15px 30px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 10px; animation: slideDown 0.3s ease-out forwards; border-left: 4px solid #ef4444; text-transform: none; }
+        .toast.success { border-left-color: #10b981; }
+        .toast.error { border-left-color: #ef4444; }
+        .toast.warning { border-left-color: #f59e0b; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+    </style>
+</head>
+<body>
+<div id="toast-container"></div>
+<div id="loader"><div class="spinner"></div><div style="color:#38bdf8; font-weight:600;">Initializing...</div></div>
+<div id="header-bar" style="display: none;">
+    <div class="logo">🧠 ByteK BCI - Post Stroke Upper Limb Therapy</div>
+    <div style="font-size: 13px; color: #64748b; font-weight: 600;">PATIENT: <span id="ui-patient-id" style="color:#38bdf8;">--</span> | SESSION: ACTIVE</div>
+</div>
+<div id="cue-banner" style="display: none;"><h2 id="cue-text">WAITING...</h2></div>
+<div id="toast"></div>
+<div id="exercise-panel" style="display: none;">
+    <h3>Exercise Protocol</h3>
+    <button class="ex-btn active" onclick="setExercise('grip', this)">✊ Finger Grip</button>
+    <button class="ex-btn" onclick="setExercise('lift', this)">💪 Shoulder Lift</button>
+    <button class="ex-btn" onclick="setExercise('reach', this)">🏃 Functional Reach</button>
+</div>
+<div id="status-container" style="display: none;">
+    <div id="status-label">Brain Intent State</div>
+    <div id="status">Waiting...</div>
+    <div class="data-row"><span class="data-label">Confidence</span><span class="data-value" id="ui-conf">--%</span></div>
+    <div class="data-row"><span class="data-label">Latency</span><span class="data-value" id="ui-lat">-- ms</span></div>
+</div>
+<div id="eeg-container" style="display: none;">
+    <div class="eeg-label">Live EEG Stream (Motor Cortex)</div>
+    <canvas id="eeg-canvas"></canvas>
+</div>
+
+<div id="end-modal">
+    <div class="modal-content">
+        <h2>SESSION COMPLETE</h2>
+        <p style="color: #94a3b8; font-size: 14px; margin: 0 0 10px 0;">Record post-session vitals to close the clinical loop.</p>
+
+        <div style="display: flex; gap: 10px;">
+            <input type="number" id="post-sys" placeholder="Systolic">
+            <input type="number" id="post-dia" placeholder="Diastolic">
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <input type="number" id="post-hr" placeholder="Heart Rate">
+            <input type="number" id="post-spo2" placeholder="SpO2 (%)">
+        </div>
+
+        <button class="btn-restart" id="btn-save-close" onclick="savePostVitals()">Save & Close Session</button>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="game.js?v=8"></script>
+
+<script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const patientId = urlParams.get('id') || '1';
+    const avatarGender = urlParams.get('avatar') || 'male';
+
+    window.currentSessionId = null;
+
+    document.getElementById('ui-patient-id').innerText = `PAT-00${patientId}`;
+
+    // --- TOAST SYSTEM ---
+    function showToast(message, type = 'error') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.innerHTML = `<span>${message}</span>`;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.style.animation = 'fadeOut 0.3s ease-out forwards';
+            setTimeout(() => { toast.remove(); }, 300);
+        }, 2000);
+    }
+
+    window.onload = async () => {
+        loadAvatar(avatarGender);
+        await fetch(`/api/start-therapy/${patientId}`, { method: 'POST' });
+    };
+
+    async function savePostVitals() {
+        const sys = document.getElementById('post-sys').value;
+        const dia = document.getElementById('post-dia').value;
+        const hr = document.getElementById('post-hr').value;
+        const spo2 = document.getElementById('post-spo2').value;
+
+        if(!sys || !dia || !hr || !spo2) return showToast("Enter all post-session vitals.", "error");
+
+        const btn = document.getElementById('btn-save-close');
+        btn.innerText = "Saving...";
+        btn.disabled = true;
+
+        await fetch('/api/save-vitals', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                patient_id: parseInt(patientId),
+                session_id: window.currentSessionId,
+                phase: 'Post-Therapy',
+                bp_systolic: sys,
+                bp_diastolic: dia,
+                heart_rate: hr,
+                spo2: spo2,
+                fatigue_scale: 0,
+                symptoms_reported: false
+            })
+        });
+
+        btn.innerText = "Saved. Redirecting...";
+        setTimeout(() => { window.location.href = '/dashboard.html'; }, 2000);
+    }
+</script>
+</body>
+</html>
