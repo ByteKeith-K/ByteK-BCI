@@ -73,8 +73,6 @@ def stream_live():
         model.eval()
 
     # --- AI WARM-UP PASS ---
-    # This forces the CPU to initialize the math libraries and cache the model weights
-    # before the actual trials begin. It eliminates the "Cold Start" delay on Trial 1.
     print("Warming up AI model...", flush=True)
     if DATASET_TYPE == 'stroke':
         dummy_sample = X[0:1]
@@ -88,7 +86,7 @@ def stream_live():
     for i in range(num_trials):
         true_label = "left" if y[i] == 0 else "right"
 
-        # PHASE 0: TRIAL START (Marks the beginning of a new block)
+        # PHASE 0: TRIAL START
         ws.send(
             json.dumps({"action": "trial_start", "trial_num": i + 1, "total_trials": num_trials, "source": "python"}))
         time.sleep(5)
@@ -101,9 +99,7 @@ def stream_live():
         ws.send(json.dumps({"action": "cue", "intended_action": true_label, "source": "python"}))
         time.sleep(4)
 
-        # PHASE 3: RESULT (Measuring True AI Inference)
-
-        # --- START REAL AI TIMER ---
+        # PHASE 3: RESULT
         start_time = time.perf_counter()
 
         if DATASET_TYPE == 'stroke':
@@ -112,6 +108,8 @@ def stream_live():
             confidence = max(probs) * 100
             prediction = np.argmax(probs)
             status = "Accepted" if confidence > 75 else "Rejected"
+            # Extract raw data for frontend (first channel)
+            raw_eeg_snippet = X[i][0].tolist()
         else:
             input_tensor = torch.tensor(np.expand_dims(np.expand_dims(X_csp[i], axis=0), axis=0), dtype=torch.float32)
             with torch.no_grad():
@@ -121,10 +119,11 @@ def stream_live():
                 _, predicted = torch.max(outputs.data, 1)
                 prediction = predicted.item()
             status = "Accepted" if confidence > 70 else "Rejected"
+            # Extract raw data for frontend (first spatial component)
+            raw_eeg_snippet = X_csp[i][0].tolist()
 
-        # --- STOP REAL AI TIMER ---
         end_time = time.perf_counter()
-        latency = (end_time - start_time) * 1000  # Convert to milliseconds
+        latency = (end_time - start_time) * 1000
 
         action = "left" if prediction == 0 else "right"
         total_confidence += confidence
@@ -137,17 +136,16 @@ def stream_live():
             f"Trial {i + 1} | Target: {true_label.upper()} | Pred: {action.upper()} | Conf: {confidence:.1f}% | Latency: {latency:.2f}ms | {status}",
             flush=True)
 
+        # Send the real EEG array in the payload
         payload = json.dumps({"action": "result", "prediction": action, "intended_action": true_label, "status": status,
-                              "confidence": confidence, "latency": latency, "source": "python"})
+                              "confidence": confidence, "latency": latency, "eeg_data": raw_eeg_snippet,
+                              "source": "python"})
         ws.send(payload)
 
-        # Hold the result state to let the patient see the arm and digest
         time.sleep(6)
 
-        # PHASE 4: TRIAL END (Marks the end of the block, leaves arm in place)
+        # PHASE 4: TRIAL END
         ws.send(json.dumps({"action": "trial_end", "trial_num": i + 1, "source": "python"}))
-
-        # Inter-trial interval for clinician and patient to discuss the trial
         time.sleep(5)
 
     print("\nSession Complete. Syncing to Telemedicine Portal...", flush=True)

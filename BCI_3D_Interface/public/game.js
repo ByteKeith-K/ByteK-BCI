@@ -92,9 +92,7 @@ let leftHandBone = null, rightHandBone = null;
 let animState = 'idle';
 let animProgress = 0;
 let currentTargetArm = 'left';
-// FIX: Increased to 0.015 for a snappier, more responsive feel
 const animSpeed = 0.015;
-// Hold time at peak pose (~1.2s at 60fps)
 const holdDurationFrames = 72;
 let holdFramesCounter = 0;
 
@@ -126,6 +124,7 @@ const targetVals = {
 const canvas = document.getElementById('eeg-canvas');
 const ctx = canvas.getContext('2d');
 let eegOffset = 0; let eegAmplitude = 5; let eegColor = '#10b981';
+let currentRealEEGData = []; // NEW: Holds actual data from Python
 
 function loadAvatar(gender) {
     currentAvatarGender = gender;
@@ -219,6 +218,7 @@ ws.onmessage = (event) => {
         if (data.action === 'session_end') {
             isSessionActive = false;
             resetUI();
+            currentRealEEGData = []; // Clear real data
             cueText.innerText = "SESSION ENDED";
             cueText.style.color = "#10b981";
             speak("Session complete. Well done.");
@@ -235,6 +235,7 @@ ws.onmessage = (event) => {
 
         if (data.action === 'trial_start') {
             resetUI();
+            currentRealEEGData = []; // Clear real data
 
             cueText.innerText = `TRIAL ${data.trial_num} OF ${data.total_trials}`;
             cueText.style.color = "#f59e0b";
@@ -258,6 +259,7 @@ ws.onmessage = (event) => {
 
         if (data.action === 'rest') {
             resetUI();
+            currentRealEEGData = []; // Clear real data
             cueText.innerText = "REST";
             cueText.style.color = "#64748b";
             statusText.innerText = "Resting...";
@@ -270,6 +272,7 @@ ws.onmessage = (event) => {
 
         if (data.action === 'cue') {
             playSound('cue');
+            currentRealEEGData = []; // Clear real data
             let exerciseName = "grip";
             if (currentExercise === 'lift') exerciseName = "shoulder lift";
             if (currentExercise === 'reach') exerciseName = "functional reach";
@@ -289,6 +292,11 @@ ws.onmessage = (event) => {
         if (data.action === 'result') {
             if (data.confidence !== undefined) uiConf.innerText = `${data.confidence.toFixed(1)}%`;
             if (data.latency !== undefined) uiLat.innerText = `${data.latency.toFixed(0)} ms`;
+
+            // NEW: Capture the real EEG data payload
+            if (data.eeg_data) {
+                currentRealEEGData = data.eeg_data;
+            }
 
             if (data.status === "Rejected") {
                 playSound('reject');
@@ -399,19 +407,51 @@ window.addEventListener('resize', resizeCanvas);
 
 function drawEEG() {
     requestAnimationFrame(drawEEG);
+
+    // Dim the background to create the trailing effect
     ctx.fillStyle = 'rgba(11, 17, 32, 0.2)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = eegColor; ctx.shadowBlur = 10; ctx.shadowColor = eegColor;
-    for (let x = 0; x < canvas.width; x++) {
-        let y = canvas.height / 2;
-        let t = (x + eegOffset) * 0.05;
-        let wave = Math.sin(t) * Math.cos(t * 0.5) * eegAmplitude + (Math.random() - 0.5) * eegAmplitude * 0.5;
-        ctx.lineTo(x, y + wave);
+
+    ctx.beginPath();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = eegColor;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = eegColor;
+
+    if (currentRealEEGData.length > 0) {
+        // --- DRAW THE REAL AI DATA ---
+        const dataLength = currentRealEEGData.length;
+        let minVal = Math.min(...currentRealEEGData);
+        let maxVal = Math.max(...currentRealEEGData);
+        let range = maxVal - minVal;
+        if (range === 0) range = 1;
+
+        for (let x = 0; x < canvas.width; x++) {
+            // Map canvas X to the real data array index
+            let dataIndex = Math.floor((x / canvas.width) * dataLength);
+            let val = currentRealEEGData[dataIndex];
+
+            // Scale the value to fit the canvas height with padding
+            let y = canvas.height / 2 - ((val - minVal) / range - 0.5) * (canvas.height * 0.8);
+
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+    } else {
+        // --- DRAW BASELINE NOISE (When waiting, rest, or cue) ---
+        for (let x = 0; x < canvas.width; x++) {
+            let y = canvas.height / 2;
+            let t = (x + eegOffset) * 0.05;
+            let wave = Math.sin(t) * Math.cos(t * 0.5) * eegAmplitude + (Math.random() - 0.5) * eegAmplitude * 0.5;
+            ctx.lineTo(x, y + wave);
+        }
+        eegOffset -= 5;
+        if (eegAmplitude > 5) eegAmplitude -= 0.5;
+        if (eegAmplitude < 5) { eegAmplitude += 0.5; eegColor = '#10b981'; }
     }
-    ctx.stroke(); ctx.shadowBlur = 0;
-    eegOffset -= 5;
-    if (eegAmplitude > 5) eegAmplitude -= 0.5;
-    if (eegAmplitude < 5) { eegAmplitude += 0.5; eegColor = '#10b981'; }
+
+    ctx.stroke();
+    ctx.shadowBlur = 0;
 }
 
 function animate() {
