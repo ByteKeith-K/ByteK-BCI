@@ -6,7 +6,6 @@ import time
 import os
 import joblib
 import requests
-import random
 import sys
 import scipy.io
 import scipy.signal as signal
@@ -73,6 +72,19 @@ def stream_live():
         model.load_state_dict(torch.load(os.path.join(patient_dir, "eegnet_model.pth"), weights_only=True))
         model.eval()
 
+    # --- AI WARM-UP PASS ---
+    # This forces the CPU to initialize the math libraries and cache the model weights
+    # before the actual trials begin. It eliminates the "Cold Start" delay on Trial 1.
+    print("Warming up AI model...", flush=True)
+    if DATASET_TYPE == 'stroke':
+        dummy_sample = X[0:1]
+        clf.predict_proba(dummy_sample)
+    else:
+        dummy_tensor = torch.tensor(np.expand_dims(np.expand_dims(X_csp[0], axis=0), axis=0), dtype=torch.float32)
+        with torch.no_grad():
+            model(dummy_tensor)
+    print("Warm-up complete. Starting trials.", flush=True)
+
     for i in range(num_trials):
         true_label = "left" if y[i] == 0 else "right"
 
@@ -89,8 +101,10 @@ def stream_live():
         ws.send(json.dumps({"action": "cue", "intended_action": true_label, "source": "python"}))
         time.sleep(4)
 
-        # PHASE 3: RESULT
-        latency = random.uniform(40, 80)
+        # PHASE 3: RESULT (Measuring True AI Inference)
+
+        # --- START REAL AI TIMER ---
+        start_time = time.perf_counter()
 
         if DATASET_TYPE == 'stroke':
             sample = X[i:i + 1]
@@ -108,6 +122,10 @@ def stream_live():
                 prediction = predicted.item()
             status = "Accepted" if confidence > 70 else "Rejected"
 
+        # --- STOP REAL AI TIMER ---
+        end_time = time.perf_counter()
+        latency = (end_time - start_time) * 1000  # Convert to milliseconds
+
         action = "left" if prediction == 0 else "right"
         total_confidence += confidence
         total_latency += latency
@@ -116,7 +134,7 @@ def stream_live():
             {"intended_action": true_label, "predicted_action": action, "confidence": round(confidence, 2),
              "reaction_time_ms": round(latency, 2), "status": status})
         print(
-            f"Trial {i + 1} | Target: {true_label.upper()} | Pred: {action.upper()} | Conf: {confidence:.1f}% | {status}",
+            f"Trial {i + 1} | Target: {true_label.upper()} | Pred: {action.upper()} | Conf: {confidence:.1f}% | Latency: {latency:.2f}ms | {status}",
             flush=True)
 
         payload = json.dumps({"action": "result", "prediction": action, "intended_action": true_label, "status": status,
@@ -156,4 +174,3 @@ def stream_live():
 
 if __name__ == "__main__":
     stream_live()
-
