@@ -24,6 +24,41 @@ function playSound(type) {
     } catch (e) {}
 }
 
+// --- VOICE SYNTHESIS ENGINE ---
+let currentAvatarGender = 'male';
+let availableVoices = [];
+
+if (window.speechSynthesis) {
+    window.speechSynthesis.onvoiceschanged = () => {
+        availableVoices = window.speechSynthesis.getVoices();
+    };
+}
+
+function speak(text) {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.0;
+    utterance.volume = 1.0;
+
+    const enVoices = availableVoices.filter(v => v.lang.startsWith('en'));
+    let selectedVoice = null;
+
+    if (enVoices.length > 0) {
+        const genderVoices = enVoices.filter(v => v.name.toLowerCase().includes(currentAvatarGender));
+        if (genderVoices.length > 0) {
+            selectedVoice = genderVoices[0];
+        } else {
+            selectedVoice = enVoices[0];
+            utterance.pitch = currentAvatarGender === 'female' ? 1.3 : 0.7;
+        }
+    }
+
+    if (selectedVoice) utterance.voice = selectedVoice;
+    window.speechSynthesis.speak(utterance);
+}
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b1120);
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -43,21 +78,57 @@ const loader = document.getElementById('loader');
 const uiConf = document.getElementById('ui-conf');
 const uiLat = document.getElementById('ui-lat');
 const cueText = document.getElementById('cue-text');
-const toast = document.getElementById('toast');
 
 let isSessionActive = false;
 let avatar = null;
 let currentExercise = 'grip';
 
+// Bone references
 let leftArmBone = null, rightArmBone = null;
 let leftForeArmBone = null, rightForeArmBone = null;
 let leftHandBone = null, rightHandBone = null;
+
+// Animation State Machine: 'idle', 'forward', 'holding', 'returning'
+let animState = 'idle';
+let animProgress = 0;
+let currentTargetArm = 'left';
+// FIX: Increased to 0.015 for a snappier, more responsive feel
+const animSpeed = 0.015;
+// Hold time at peak pose (~1.2s at 60fps)
+const holdDurationFrames = 72;
+let holdFramesCounter = 0;
+
+// Exact Resting Pose
+const restVals = {
+    lArm: {x: 1.55, y: 0, z: -0.20},
+    rArm: {x: 1.55, y: 0, z: 0.20},
+    lFore: {x: 0.1, y: 0, z: 0},
+    rFore: {x: 0.1, y: 0, z: 0},
+    lHand: {x: 0, y: 0, z: -1.8},
+    rHand: {x: 0, y: 0, z: 1.8}
+};
+
+const targetVals = {
+    grip: {
+        lArm: {x: 0.9, y: 0, z: -0.1}, lFore: {x: 0, y: 0, z: 1.8},
+        rArm: {x: 0.9, y: 0, z: 0.1},  rFore: {x: 0, y: 0, z: -1.8}
+    },
+    lift: {
+        lArm: {x: -1.0, y: 0, z: 0.5}, lFore: {x: 0, y: 0, z: 0},
+        rArm: {x: -1.0, y: 0, z: -0.5}, rFore: {x: 0, y: 0, z: 0}
+    },
+    reach: {
+        lArm: {x: 0.1, y: -0.2, z: 1.45}, lFore: {x: 0.0, y: 0.0, z: 0},
+        rArm: {x: 0.1, y: 0.2, z: -1.45}, rFore: {x: 0.0, y: 0.0, z: 0}
+    }
+};
 
 const canvas = document.getElementById('eeg-canvas');
 const ctx = canvas.getContext('2d');
 let eegOffset = 0; let eegAmplitude = 5; let eegColor = '#10b981';
 
 function loadAvatar(gender) {
+    currentAvatarGender = gender;
     loader.style.display = 'block';
     const gltfLoader = new THREE.GLTFLoader();
     let modelURL = gender === 'female' ? '/female.glb' : '/male.glb';
@@ -87,7 +158,7 @@ function loadAvatar(gender) {
         document.getElementById('cue-banner').style.display = 'block';
 
         resizeCanvas();
-        if (!isSessionActive) resetUI();
+        resetUI();
 
     }, undefined, (error) => {
         loader.style.display = 'none';
@@ -98,19 +169,29 @@ function loadAvatar(gender) {
 function setExercise(ex, btnElement) {
     playSound('success');
     currentExercise = ex;
-    document.querySelectorAll('.ex-btn').forEach(btn => { btn.classList.remove('active'); btn.disabled = true; });
-    btnElement.classList.add('active'); btnElement.disabled = false;
+
+    document.querySelectorAll('.ex-btn').forEach(btn => {
+        btn.classList.remove('active');
+        btn.disabled = false;
+    });
+    btnElement.classList.add('active');
 }
 
 function resetUI() {
-    try {
-        if (leftArmBone) leftArmBone.rotation.set(1.55, 0, -0.20);
-        if (rightArmBone) rightArmBone.rotation.set(1.55, 0, 0.20);
-        if (leftForeArmBone) leftForeArmBone.rotation.set(0.1, 0, 0);
-        if (rightForeArmBone) rightForeArmBone.rotation.set(0.1, 0, 0);
-        if (leftHandBone) leftHandBone.rotation.set(0, 0, -1.8);
-        if (rightHandBone) rightHandBone.rotation.set(0, 0, 1.8);
-    } catch(e) {}
+    if (animProgress > 0.01) {
+        animState = 'returning';
+    } else {
+        animState = 'idle';
+        animProgress = 0;
+        try {
+            if (leftArmBone) leftArmBone.rotation.set(restVals.lArm.x, restVals.lArm.y, restVals.lArm.z);
+            if (rightArmBone) rightArmBone.rotation.set(restVals.rArm.x, restVals.rArm.y, restVals.rArm.z);
+            if (leftForeArmBone) leftForeArmBone.rotation.set(restVals.lFore.x, restVals.lFore.y, restVals.lFore.z);
+            if (rightForeArmBone) rightForeArmBone.rotation.set(restVals.rFore.x, restVals.rFore.y, restVals.rFore.z);
+            if (leftHandBone) leftHandBone.rotation.set(restVals.lHand.x, restVals.lHand.y, restVals.lHand.z);
+            if (rightHandBone) rightHandBone.rotation.set(restVals.rHand.x, restVals.rHand.y, restVals.rHand.z);
+        } catch(e) {}
+    }
 
     statusText.innerText = "Waiting...";
     statusText.style.color = "#38bdf8";
@@ -122,12 +203,6 @@ function resetUI() {
     eegColor = '#10b981'; eegAmplitude = 5;
 }
 
-function showToast(message, type) {
-    toast.innerText = message;
-    toast.className = `toast-${type} toast-show`;
-    setTimeout(() => { toast.className = ''; }, 2500);
-}
-
 const ws = new WebSocket('ws://localhost:3000');
 
 ws.onmessage = (event) => {
@@ -137,6 +212,7 @@ ws.onmessage = (event) => {
 
         if (data.action === 'session_start') {
             isSessionActive = true;
+            speak("Session started. Let us begin.");
             return;
         }
 
@@ -145,8 +221,8 @@ ws.onmessage = (event) => {
             resetUI();
             cueText.innerText = "SESSION ENDED";
             cueText.style.color = "#10b981";
+            speak("Session complete. Well done.");
 
-            // Use the exact session ID provided by Python
             if (data.session_id) {
                 window.currentSessionId = data.session_id;
             }
@@ -157,6 +233,29 @@ ws.onmessage = (event) => {
 
         if (!avatar) return;
 
+        if (data.action === 'trial_start') {
+            resetUI();
+
+            cueText.innerText = `TRIAL ${data.trial_num} OF ${data.total_trials}`;
+            cueText.style.color = "#f59e0b";
+            statusText.innerText = "Preparing...";
+            statusText.style.color = "#f59e0b";
+
+            uiConf.innerText = "--%";
+            uiLat.innerText = "-- ms";
+
+            speak(`Trial ${data.trial_num}. Get ready.`);
+            return;
+        }
+
+        if (data.action === 'trial_end') {
+            cueText.innerText = `TRIAL ${data.trial_num} COMPLETE`;
+            cueText.style.color = "#64748b";
+            statusText.innerText = "Trial Complete";
+            statusText.style.color = "#64748b";
+            return;
+        }
+
         if (data.action === 'rest') {
             resetUI();
             cueText.innerText = "REST";
@@ -165,20 +264,25 @@ ws.onmessage = (event) => {
             statusText.style.color = "#64748b";
             uiConf.innerText = "--%";
             uiLat.innerText = "-- ms";
+            speak("Rest.");
             return;
         }
 
         if (data.action === 'cue') {
             playSound('cue');
-            let exerciseName = "GRIP";
-            if (currentExercise === 'lift') exerciseName = "SHOULDER LIFT";
-            if (currentExercise === 'reach') exerciseName = "FUNCTIONAL REACH";
+            let exerciseName = "grip";
+            if (currentExercise === 'lift') exerciseName = "shoulder lift";
+            if (currentExercise === 'reach') exerciseName = "functional reach";
 
-            cueText.innerText = `IMAGINE ${data.intended_action.toUpperCase()} ${exerciseName}`;
+            let instruction = `Imagine ${data.intended_action} ${exerciseName}`;
+
+            cueText.innerText = instruction.toUpperCase();
             cueText.style.color = "#38bdf8";
             statusText.innerText = "Reading Brainwaves...";
             statusText.style.color = "#38bdf8";
             eegColor = '#38bdf8'; eegAmplitude = 20;
+
+            speak(instruction);
             return;
         }
 
@@ -193,20 +297,24 @@ ws.onmessage = (event) => {
                 statusText.style.textShadow = "0 0 15px rgba(245, 158, 11, 0.4)";
                 showToast("Focus and try again", "warning");
                 eegColor = '#f59e0b'; eegAmplitude = 15;
+                speak("Signal unclear. Please focus.");
                 return;
             }
 
             if (data.prediction === data.intended_action) {
                 playSound('success');
-                resetUI();
                 statusText.innerText = `SUCCESS!`;
                 statusText.style.color = "#10b981";
                 statusText.style.textShadow = "0 0 15px rgba(16, 185, 129, 0.4)";
                 showToast("✓ Correct Intent", "success");
                 eegColor = '#10b981'; eegAmplitude = 40;
 
-                if (data.prediction === 'left') animateLeftArm();
-                if (data.prediction === 'right') animateRightArm();
+                speak("Excellent. Correct.");
+
+                animState = 'forward';
+                animProgress = 0;
+                holdFramesCounter = 0;
+                currentTargetArm = data.prediction;
 
             } else {
                 playSound('reject');
@@ -216,24 +324,74 @@ ws.onmessage = (event) => {
                 statusText.style.textShadow = "0 0 15px rgba(239, 68, 68, 0.4)";
                 showToast(`✗ AI read ${data.prediction.toUpperCase()}`, "error");
                 eegColor = '#ef4444'; eegAmplitude = 20;
+                speak("Incorrect. Try to focus.");
             }
         }
 
     } catch (e) { console.error("WS Parsing Error:", e); }
 };
 
-function animateLeftArm() {
-    if (!leftArmBone) return;
-    if (currentExercise === 'grip') { leftArmBone.rotation.set(0.8, 0, 0.2); if (leftForeArmBone) leftForeArmBone.rotation.set(0, -1.5, 0); }
-    else if (currentExercise === 'lift') { leftArmBone.rotation.set(-1.0, 0, 0.5); if (leftForeArmBone) leftForeArmBone.rotation.set(0, 0, 0); }
-    else if (currentExercise === 'reach') { leftArmBone.rotation.set(0, 0, 1.2); if (leftForeArmBone) leftForeArmBone.rotation.set(0, 0, 0); }
-}
+// --- SMOOTH ANIMATION ENGINE ---
+function animateArm() {
+    if (animState === 'idle') return;
 
-function animateRightArm() {
-    if (!rightArmBone) return;
-    if (currentExercise === 'grip') { rightArmBone.rotation.set(0.8, 0, -0.2); if (rightForeArmBone) rightForeArmBone.rotation.set(0, 1.5, 0); }
-    else if (currentExercise === 'lift') { rightArmBone.rotation.set(-1.0, 0, -0.5); if (rightForeArmBone) rightForeArmBone.rotation.set(0, 0, 0); }
-    else if (currentExercise === 'reach') { rightArmBone.rotation.set(0, 0, -1.2); if (rightForeArmBone) rightForeArmBone.rotation.set(0, 0, 0); }
+    if (animState === 'forward') {
+        animProgress += animSpeed;
+        if (animProgress >= 1) {
+            animProgress = 1;
+            animState = 'holding';
+            holdFramesCounter = 0;
+        }
+    } else if (animState === 'holding') {
+        holdFramesCounter++;
+        if (holdFramesCounter >= holdDurationFrames) {
+            animState = 'returning';
+        }
+    } else if (animState === 'returning') {
+        animProgress -= animSpeed;
+        if (animProgress <= 0) { animProgress = 0; animState = 'idle'; }
+    }
+
+    let targetL = restVals.lArm, targetR = restVals.rArm;
+    let targetFL = restVals.lFore, targetFR = restVals.rFore;
+
+    if (animState === 'forward' || animState === 'holding' || (animState === 'returning' && animProgress > 0)) {
+        const activeTarget = targetVals[currentExercise];
+        if (currentTargetArm === 'left') {
+            targetL = activeTarget.lArm;
+            targetFL = activeTarget.lFore;
+        } else {
+            targetR = activeTarget.rArm;
+            targetFR = activeTarget.rFore;
+        }
+    }
+
+    try {
+        if (leftArmBone) {
+            leftArmBone.rotation.x = THREE.MathUtils.lerp(restVals.lArm.x, targetL.x, animProgress);
+            leftArmBone.rotation.y = THREE.MathUtils.lerp(restVals.lArm.y, targetL.y, animProgress);
+            leftArmBone.rotation.z = THREE.MathUtils.lerp(restVals.lArm.z, targetL.z, animProgress);
+        }
+        if (rightArmBone) {
+            rightArmBone.rotation.x = THREE.MathUtils.lerp(restVals.rArm.x, targetR.x, animProgress);
+            rightArmBone.rotation.y = THREE.MathUtils.lerp(restVals.rArm.y, targetR.y, animProgress);
+            rightArmBone.rotation.z = THREE.MathUtils.lerp(restVals.rArm.z, targetR.z, animProgress);
+        }
+        if (leftForeArmBone) {
+            leftForeArmBone.rotation.x = THREE.MathUtils.lerp(restVals.lFore.x, targetFL.x, animProgress);
+            leftForeArmBone.rotation.y = THREE.MathUtils.lerp(restVals.lFore.y, targetFL.y, animProgress);
+            leftForeArmBone.rotation.z = THREE.MathUtils.lerp(restVals.lFore.z, targetFL.z, animProgress);
+        }
+        if (rightForeArmBone) {
+            rightForeArmBone.rotation.x = THREE.MathUtils.lerp(restVals.rFore.x, targetFR.x, animProgress);
+            rightForeArmBone.rotation.y = THREE.MathUtils.lerp(restVals.rFore.y, targetFR.y, animProgress);
+            rightForeArmBone.rotation.z = THREE.MathUtils.lerp(restVals.rFore.z, targetFR.z, animProgress);
+        }
+
+        if (leftHandBone) leftHandBone.rotation.set(restVals.lHand.x, restVals.lHand.y, restVals.lHand.z);
+        if (rightHandBone) rightHandBone.rotation.set(restVals.rHand.x, restVals.rHand.y, restVals.rHand.z);
+
+    } catch(e) {}
 }
 
 function resizeCanvas() { canvas.width = canvas.parentElement.clientWidth; canvas.height = canvas.parentElement.clientHeight; }
@@ -256,5 +414,10 @@ function drawEEG() {
     if (eegAmplitude < 5) { eegAmplitude += 0.5; eegColor = '#10b981'; }
 }
 
-function animate() { requestAnimationFrame(animate); renderer.render(scene, camera); }
-animate(); drawEEG();
+function animate() {
+    requestAnimationFrame(animate);
+    animateArm();
+    renderer.render(scene, camera);
+}
+animate();
+drawEEG();

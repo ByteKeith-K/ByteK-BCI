@@ -4,7 +4,6 @@ import glob
 
 STROKE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "stroke")
 
-
 def find_stroke_events():
     edf_search_path = os.path.join(STROKE_DIR, "**", "*.edf")
     edf_files = glob.glob(edf_search_path, recursive=True)
@@ -45,3 +44,5 @@ def find_stroke_events():
 
 if __name__ == "__main__":
     find_stroke_events()
+
+

@@ -1,3 +1,5 @@
+require('dotenv').config(); // Load environment variables from .env
+
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
@@ -8,9 +10,18 @@ const { spawn } = require('child_process');
 const app = express();
 app.use(express.json());
 
+// --- SECURE DATABASE CONFIGURATION ---
 const pool = new Pool({
-    user: 'postgres', host: 'localhost', database: 'postgres', password: 'bytekeith', port: 5432,
+    user: process.env.DB_USER,
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    password: process.env.DB_PASSWORD,
+    port: parseInt(process.env.DB_PORT, 10),
 });
+
+// --- SECURE PYTHON PATHS ---
+const pythonPath = process.env.PYTHON_EXECUTABLE;
+const scriptDir = process.env.PYTHON_SCRIPT_DIR;
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -139,8 +150,7 @@ app.post('/api/calibrate/:id', async (req, res) => {
         const pResult = await pool.query('SELECT dataset_type FROM patients WHERE id = $1', [patientId]);
         const datasetType = pResult.rows[0]?.dataset_type || 'healthy';
 
-        const pythonPath = 'C:\\Users\\ByteKeith\\PycharmProjects\\BCI_Rehab_Platform\\.venv\\Scripts\\python.exe';
-        const scriptPath = 'C:\\Users\\ByteKeith\\PycharmProjects\\BCI_Rehab_Platform\\src\\calibrate_patient.py';
+        const scriptPath = path.join(scriptDir, 'calibrate_patient.py');
 
         const pythonProcess = spawn(pythonPath, ['-u', scriptPath, patientId, datasetType]);
         pythonProcess.stdout.on('data', (data) => console.log(`Python: ${data}`));
@@ -162,8 +172,7 @@ app.post('/api/start-therapy/:id', async (req, res) => {
         const pResult = await pool.query('SELECT dataset_type FROM patients WHERE id = $1', [patientId]);
         const datasetType = pResult.rows[0]?.dataset_type || 'healthy';
 
-        const pythonPath = 'C:\\Users\\ByteKeith\\PycharmProjects\\BCI_Rehab_Platform\\.venv\\Scripts\\python.exe';
-        const scriptPath = 'C:\\Users\\ByteKeith\\PycharmProjects\\BCI_Rehab_Platform\\src\\websocket_stream.py';
+        const scriptPath = path.join(scriptDir, 'websocket_stream.py');
 
         const pythonProcess = spawn(pythonPath, ['-u', scriptPath, patientId, datasetType]);
         pythonProcess.stdout.on('data', (data) => console.log(`Python: ${data}`));

@@ -76,9 +76,14 @@ def stream_live():
     for i in range(num_trials):
         true_label = "left" if y[i] == 0 else "right"
 
+        # PHASE 0: TRIAL START (Marks the beginning of a new block)
+        ws.send(
+            json.dumps({"action": "trial_start", "trial_num": i + 1, "total_trials": num_trials, "source": "python"}))
+        time.sleep(5)
+
         # PHASE 1: REST
         ws.send(json.dumps({"action": "rest", "source": "python"}))
-        time.sleep(4)
+        time.sleep(3)
 
         # PHASE 2: CUE
         ws.send(json.dumps({"action": "cue", "intended_action": true_label, "source": "python"}))
@@ -118,7 +123,14 @@ def stream_live():
                               "confidence": confidence, "latency": latency, "source": "python"})
         ws.send(payload)
 
-        time.sleep(2)
+        # Hold the result state to let the patient see the arm and digest
+        time.sleep(6)
+
+        # PHASE 4: TRIAL END (Marks the end of the block, leaves arm in place)
+        ws.send(json.dumps({"action": "trial_end", "trial_num": i + 1, "source": "python"}))
+
+        # Inter-trial interval for clinician and patient to discuss the trial
+        time.sleep(5)
 
     print("\nSession Complete. Syncing to Telemedicine Portal...", flush=True)
     avg_conf = total_confidence / num_trials
@@ -144,3 +156,4 @@ def stream_live():
 
 if __name__ == "__main__":
     stream_live()
+
